@@ -1,0 +1,295 @@
+---
+title: "Pronghorn Range"
+author: "Lauren Puffer"
+format: html
+editor: visual
+---
+
+## Load packages
+
+```{r}
+library(here)
+library(terra)
+library(janitor)
+library(CoordinateCleaner)
+library(tmap)
+library(lubridate)
+library(tidyverse)
+library(adehabitatHR)
+library(sp)
+library(sf)
+library(tmap)
+```
+
+## Load presence data
+
+Presence data of both Pronghorn and Tule elk comes from the Global Biodiversity Information Facility.
+
+```{r}
+# read in pronghorn data 
+pronghorn <- read.csv(here("Pronghorn", "pronghorn presence.csv"))
+
+# read in tule elk 
+tule <- read.csv(here("Tule Elk", "tule elk presence.csv"))
+```
+
+Now we need to clean the date column so that the format is consistent using the lubridate package.
+
+```{r}
+# PRONGHORN: get date column into year-month-day format
+pronghorn_formatted <- pronghorn |>
+  mutate(date = dmy(date)) |>
+  mutate(date = ymd(date)) 
+
+# TULE: get date column into year-month-day format
+tule_formatted <- tule |>
+  mutate(date = dmy(date)) |>
+  mutate(date = ymd(date))
+```
+
+## Plot Pronghorn and Tule Elk over time
+
+Now that we have our datasets in the proper format, we can create graphs of observed Tule elk and Pronghorn per year using 'ggplot'.
+
+```{r}
+# PRONGHORN: Get the number of observations per each year 
+year_counts <- pronghorn_formatted |>
+  mutate(year = year(date)) |>
+  count(year, sort = FALSE)
+
+# Plot occurences 
+prong_plot <- ggplot(year_counts, aes(x = year, y = n)) +
+  geom_col() +
+  scale_x_continuous(breaks = seq(min(year_counts$year),
+                                  max(year_counts$year),
+                                  by = 1)) +
+        geom_vline(xintercept = 1998,
+             color = "#22A884FF",
+             linewidth = 1) +
+        geom_vline(xintercept = 1990,
+             color = "#22A884FF",
+             linewidth = 1) +
+  labs(x = "Year",
+       y = "Observations",
+       title = "Pronghorn Observations per Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+# Save plot
+ggsave("pronghorn_observations_by_year.png",
+       plot = prong_plot,
+       width = 8,
+       height = 5,
+       dpi = 300,
+       bg = "white")
+
+# TULE ELK: Get the number of observations per each year
+year_counts_elk <- tule_formatted |>
+  mutate(year = year(date)) |>
+  count(year, sort = FALSE)
+
+# Plot occurrences 
+tule_plot <- ggplot(year_counts_elk, aes(x = year, y = n)) +
+  geom_col() +
+  scale_x_continuous(breaks = seq(min(year_counts_elk$year),
+                                  max(year_counts_elk$year),
+                                  by = 1)) +
+      geom_vline(xintercept = 2014,
+             color = "#22A884FF",
+             linewidth = 1) +
+        geom_vline(xintercept = 1988,
+             color = "#22A884FF",
+             linewidth = 1) +
+  labs(x = "Year",
+       y = "Observations",
+       title = "Tule Elk Observations per Year") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+# Save plot
+ggsave("tule_observations_by_year.png",
+       plot = tule_plot,
+       width = 8,
+       height = 5,
+       dpi = 300,
+       bg = "white")
+```
+
+## Create Minimum Convex Polygons
+
+Now, we can create minimum convex polygons for both Pronghorn and Tule elk. This will be used as an approximation of the home range for both species. First we must make the data into SpatialPoints by defining the coordinates and their reference system.
+
+Load data from iNaturalist with unique observer ID.
+
+```{r}
+# read in pronghorn data 
+pronghorn <- read.csv(here("Pronghorn", "Pronghorn Carrizo.csv"))
+
+# read in tule elk 
+tule <- read.csv(here("Tule Elk", "Tule Elk Carrizo.csv"))
+```
+
+Format data so that the year and other temporal data is consistent.
+
+```{r}
+# PRONGHORN: get date column into year-month-day format
+pronghorn_formatted <- pronghorn |>
+  mutate(date = mdy_hms(date)) |>
+  mutate(date = ymd(date)) 
+
+# TULE: get date column into year-month-day format
+tule_formatted <- tule |>
+  mutate(date = mdy_hms(date)) |>
+  mutate(date = ymd(date))
+```
+
+```{r}
+# PRONGHORN MCP
+
+# Define coordinates
+coordinates(pronghorn_formatted) <- c("longitude", "latitude")
+
+# Assign WGS84 for CRS
+crs(pronghorn_formatted) <- "EPSG:4269"
+
+
+# Get coordinates in meters 
+new_crs <- CRS('+init=epsg:5070')
+pronghorn_reproj <- spTransform(pronghorn_formatted, new_crs)
+
+# Create a minimum convex polygon using the x and y attributes of species point
+prong_poly <- mcp(pronghorn_reproj, percent = 95, 
+                  unin = "m",
+                  unout = "m2")
+
+# Get the area of the MCP for Pronghorn
+prong_area <- prong_poly@data$area 
+# 24.12255 before
+# 5019601 now in meters^2
+
+
+# Plot the polygon
+plot(prong_poly)
+
+
+
+
+# TULE ELK
+
+# Define coordinates 
+coordinates(tule_formatted) <- c("longitude", "latitude")
+
+# Assign WGS84 for CRS
+crs(tule_formatted) <- "EPSG:4269"
+ 
+# Get coordinates in meters 
+new_crs <- CRS('+init=epsg:5070')
+tule_reproj <- spTransform(tule_formatted, new_crs)
+
+# Create a minimum convex polygon using the x and y attributes of species point
+tule_poly <- mcp(tule_reproj, percent = 95, 
+                  unin = "m",
+                  unout = "m2")
+
+
+# Get the area of the MCP for Tule
+tule_area <- tule_poly@data$area 
+#  8.152046 before
+#  2112476 now in meters62
+
+# Plot the polygon
+plot(tule_poly)
+```
+
+Now we need to get the overlap of the two polygons.
+
+```{r}
+# Create shape files of both
+prong_sf <- st_as_sf(prong_poly)
+tule_sf <- st_as_sf(tule_poly)
+
+# Get the area of overlap
+overlap <- st_intersection(prong_sf, tule_sf)
+area_overlap <-st_area(overlap)
+overlap_poly <- as(overlap, "Spatial")
+
+# Get percent overlap
+pct_overlap <- area_overlap / (prong_area+tule_area)
+# 0.2940009 or 29.4%
+
+
+overlap_area <- st_intersection(tule_sf, prong_sf)
+st_area(overlap_area)
+
+# You can then calculate:
+percent_overlap_elkside <- st_area(overlap) / st_area(tule_sf)
+# 99.25966% of Tule elk homerange overlaps with Pronghorn
+print(percent_overlap_elkside)
+
+
+percent_overlap_prongside <- st_area(overlap) / st_area(prong_sf)
+print(percent_overlap_prongside)
+# 41.77298% of Pronghorn homerange overlaps with Tule elk
+```
+
+Now we will plot these polygons with their overlap.
+
+```{r}
+# Convert sp objects to sf if not already
+prong_sf <- st_as_sf(prong_poly)
+tule_sf <- st_as_sf(tule_poly)
+# overlap should already be sf from st_intersection
+
+# Add species column
+prong_sf$species <- "Pronghorn MCP"
+tule_sf$species <- "Tule Elk MCP"
+overlap$species <- "Overlap"
+
+# Ensure all geometry columns have the same name
+st_geometry(prong_sf) <- "geometry"
+st_geometry(tule_sf) <- "geometry"
+st_geometry(overlap) <- "geometry"
+
+# Keep only species column and bind
+all_polygons <- rbind(prong_sf[, "species"], 
+                      tule_sf[, "species"], 
+                      overlap[, "species"])
+
+class(all_polygons)  # Should be "sf"
+
+# Plot
+tmap_mode("plot")
+```
+
+Bring in the shapefile of Carrizo plane.
+
+```{r}
+carrizo_sf <- st_read(here("Carrizo Plane", "3853-s27_2013_s2_polbound_carrizo.shp"))
+
+crs(carrizo_sf) # EPSG 4326
+
+# Reproject 
+carrizo_reproj <- st_transform(carrizo_sf, crs = crs(prong_sf))
+```
+
+Make map of home range
+
+```{r}
+# Make a map of homerange
+my_map <- tm_shape(carrizo_reproj)+
+  tm_borders()+
+tm_shape(all_polygons) +
+  tm_polygons(col = "species",
+              palette = c("Tule Elk MCP" = "#FDE725FF", 
+                          "Pronghorn MCP" = "#22A884FF", 
+                          "Overlap" = "#7AD151FF"),
+              title = "Home Range") +
+  tm_compass(type = "arrow", position = c("right", "top")) +
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_layout(legend.outside = TRUE,
+            main.title = "Tule Elk and Pronghorn home range overlap")
+
+# Then save it
+tmap_save(my_map, filename = here("homerange_map.png"), 
+          width = 8, height = 6, dpi = 300)
+```
